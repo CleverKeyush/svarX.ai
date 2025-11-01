@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 320px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #ffffff;
+            color: #1f2937;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .brand-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #2563eb 100%);
+            padding: 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+        }
+
+        .brand-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .brand-logo {
+            margin-bottom: 12px;
+        }
+
+        .brand-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 4px;
+            letter-spacing: -0.5px;
+        }
+
+        .brand-subtitle {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        .header {
+            padding: 16px 20px 12px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .content {
+            padding: 18px 20px 20px;
+        }
+
+        .field {
+            margin-bottom: 14px;
+        }
+
+        .label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: #475569;
+            margin-bottom: 5px;
+        }
+
+        select {
+            width: 100%;
+            padding: 7px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 13px;
+            background: #ffffff;
+            color: #1e293b;
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><path fill="%23666" d="M2 0L0 2h4zm0 5L0 3h4z"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 10px;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+        }
+
+        .checkbox-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            background: #f8fafc;
+        }
+
+        .checkbox-field input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            accent-color: #2563eb;
+        }
+
+        .checkbox-field label {
+            font-size: 13px;
+            color: #475569;
+            cursor: pointer;
+        }
+
+        .status {
+            margin-top: 14px;
+            padding: 8px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #64748b;
+            text-align: center;
+        }
+
+        .status.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .status.error {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #dc2626;
+        }
+
+        .status.loading {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        .server-control {
+            margin: 16px 0;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+
+        .server-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .server-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: #cbd5e1;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle-switch.active {
+            background: #10b981;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(20px);
+        }
+
+        .server-status {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+
+
+
+    </style>
+</head>
+
+<body>
+    <div class="brand-header">
+        <div class="brand-content">
+            <div class="brand-logo">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                    <!-- Main cube structure -->
+                    <path d="M4 12L12 6L20 12L12 18L4 12Z" fill="#00c896" opacity="0.9" />
+                    <path d="M12 6L20 12L12 10L4 12L12 6Z" fill="#2d6cdf" opacity="0.8" />
+
+                    <!-- Geometric pattern overlay -->
+                    <g opacity="0.9">
+                        <!-- Center hexagon -->
+                        <circle cx="12" cy="10" r="2" fill="#dc3545" />
+
+                        <!-- Surrounding pattern -->
+                        <circle cx="9" cy="8" r="0.8" fill="#ffa500" />
+                        <circle cx="15" cy="8" r="0.8" fill="#ffa500" />
+                        <circle cx="9" cy="12" r="0.8" fill="#ffa500" />
+                        <circle cx="15" cy="12" r="0.8" fill="#ffa500" />
+                        <circle cx="12" cy="6" r="0.6" fill="#ffa500" opacity="0.8" />
+                        <circle cx="12" cy="14" r="0.6" fill="#ffa500" opacity="0.8" />
+
+                        <!-- Connection lines -->
+                        <path d="M9 8L12 10L15 8M9 12L12 10L15 12" stroke="#ffa500" stroke-width="0.5" opacity="0.6" />
+                    </g>
+                </svg>
+            </div>
+            <div class="brand-title">SvarX.ai</div>
+            <div class="brand-subtitle">Smart Email Assistant</div>
+        </div>
+    </div>
+
+    <div class="header">
+        <div class="section-title">Configuration</div>
+    </div>
+
+    <div class="content">
+        <div class="field">
+            <label class="label" for="tone">Response style</label>
+            <select id="tone">
+                <option value="professional">Professional</option>
+                <option value="casual">Casual</option>
+                <option value="formal">Formal</option>
+            </select>
+        </div>
+
+        <div class="field">
+            <label class="label" for="length">Response length</label>
+            <select id="length">
+                <option value="short">Concise</option>
+                <option value="medium">Standard</option>
+                <option value="long">Detailed</option>
+            </select>
+        </div>
+
+        <div class="field">
+            <div class="checkbox-field">
+                <input type="checkbox" id="personalize">
+                <label for="personalize">Learn from my writing style</label>
+            </div>
+        </div>
+
+        <div class="server-control">
+            <div class="server-header">
+                <span class="server-title">AI Server</span>
+                <div class="toggle-switch" id="serverToggle">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+            <div class="server-status" id="serverStatus">Checking server status...</div>
+        </div>
+
+        <div id="status" class="status loading">Ready</div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
