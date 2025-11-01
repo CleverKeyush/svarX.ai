@@ -87,7 +87,7 @@ The suggestions will be pretty generic at first, but they get better as the syst
 
 ### 📊 **Learning System Architecture**
 
-![Learning Architecture](images/learning.png)
+![Learning Architecture](images/learnig.png)
 *AI learning system with 5GB storage capacity - continuous improvement through user interactions and background analysis*
 
 
