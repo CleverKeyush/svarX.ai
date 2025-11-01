@@ -232,33 +232,40 @@ def download_with_requests(url, file_path):
         # First install requests if not available
         subprocess.run(['pip', 'install', 'requests'], capture_output=True, timeout=60)
         
+        # Fix Windows path escaping by using raw strings and forward slashes
+        file_path_fixed = file_path.replace('\\', '/')
+        
         # Use Python to download with requests
         download_script = f'''
 import requests
 import os
 
-url = "{url}"
-file_path = "{file_path}"
+url = r"{url}"
+file_path = r"{file_path}"
 
 print("   Starting download...")
-response = requests.get(url, stream=True)
-response.raise_for_status()
+try:
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
 
-total_size = int(response.headers.get('content-length', 0))
-downloaded = 0
+    total_size = int(response.headers.get('content-length', 0))
+    downloaded = 0
 
-with open(file_path, 'wb') as f:
-    for chunk in response.iter_content(chunk_size=8192):
-        if chunk:
-            f.write(chunk)
-            downloaded += len(chunk)
-            if total_size > 0:
-                percent = (downloaded * 100) // total_size
-                mb_downloaded = downloaded // (1024 * 1024)
-                mb_total = total_size // (1024 * 1024)
-                print(f"\\r   Progress: {{percent}}% ({{mb_downloaded}}MB / {{mb_total}}MB)", end="", flush=True)
+    with open(file_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total_size > 0:
+                    percent = (downloaded * 100) // total_size
+                    mb_downloaded = downloaded // (1024 * 1024)
+                    mb_total = total_size // (1024 * 1024)
+                    print(f"\\r   Progress: {{percent}}% ({{mb_downloaded}}MB / {{mb_total}}MB)", end="", flush=True)
 
-print("\\n   Download completed!")
+    print("\\n   Download completed!")
+except Exception as e:
+    print(f"   Download error: {{e}}")
+    raise
 '''
         
         result = subprocess.run(['python', '-c', download_script], 
@@ -272,6 +279,50 @@ print("\\n   Download completed!")
             
     except Exception as e:
         print(f"   Download error: {e}")
+        return False
+
+def download_with_pip(url, file_path):
+    """Download using pip download as a fallback"""
+    try:
+        print("   Trying pip download method...")
+        # Use pip to download (it handles HTTPS better)
+        temp_dir = os.path.join(os.path.dirname(file_path), 'temp_download')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Create a simple download script
+        download_script = os.path.join(temp_dir, 'download.py')
+        with open(download_script, 'w') as f:
+            f.write(f'''
+import urllib.request
+import ssl
+
+# Create unverified SSL context (for compatibility)
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
+url = r"{url}"
+file_path = r"{file_path}"
+
+print("Starting download...")
+urllib.request.urlretrieve(url, file_path)
+print("Download completed!")
+''')
+        
+        result = subprocess.run(['python', download_script], 
+                              capture_output=True, text=True, timeout=600)
+        
+        # Cleanup
+        try:
+            os.remove(download_script)
+            os.rmdir(temp_dir)
+        except:
+            pass
+        
+        return result.returncode == 0
+        
+    except Exception as e:
+        print(f"   Pip download error: {e}")
         return False
 
 def download_model(ai_engine_path):
@@ -297,34 +348,47 @@ def download_model(ai_engine_path):
     for i, model_url in enumerate(model_urls):
         print(f"📥 Trying download source {i+1}/{len(model_urls)}...")
         
-        # Try using requests library first (more reliable)
+        # Method 1: Try using requests library
         if download_with_requests(model_url, model_path):
             if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
                 size_gb = os.path.getsize(model_path) / (1024**3)
                 print(f"✅ Model verified: {size_gb:.1f}GB")
                 return True
         
-        # Fallback to urllib if requests fails
-        try:
-            print("   Trying alternative download method...")
-            urllib.request.urlretrieve(model_url, model_path)
-            
+        # Method 2: Try with SSL context fix
+        if download_with_pip(model_url, model_path):
             if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
+                size_gb = os.path.getsize(model_path) / (1024**3)
+                print(f"✅ Model verified: {size_gb:.1f}GB")
+                return True
+        
+        # Method 3: Try PowerShell download (Windows)
+        try:
+            print("   Trying PowerShell download...")
+            ps_command = f'Invoke-WebRequest -Uri "{model_url}" -OutFile "{model_path}" -UseBasicParsing'
+            result = subprocess.run(['powershell', '-Command', ps_command], 
+                                  capture_output=True, text=True, timeout=600)
+            
+            if result.returncode == 0 and os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
                 size_gb = os.path.getsize(model_path) / (1024**3)
                 print(f"✅ Model verified: {size_gb:.1f}GB")
                 return True
                 
         except Exception as e:
-            print(f"   ⚠️  Download failed: {e}")
-            if i < len(model_urls) - 1:
-                print("   Trying next source...")
-                continue
+            print(f"   PowerShell download failed: {e}")
+        
+        if i < len(model_urls) - 1:
+            print("   Trying next source...")
+            continue
     
-    print("\n❌ All download sources failed!")
-    print("💡 Manual download option:")
-    print("   1. Go to: https://huggingface.co/microsoft/Llama-3.2-3B-Instruct-Q4_K_M-GGUF")
-    print("   2. Download: Llama-3.2-3B-Instruct-Q4_K_M.gguf")
-    print(f"   3. Save to: {model_path}")
+    print("\n❌ All download methods failed!")
+    print("💡 Manual download instructions:")
+    print("   1. Open browser and go to:")
+    print("      https://huggingface.co/microsoft/Llama-3.2-3B-Instruct-Q4_K_M-GGUF")
+    print("   2. Click on 'Llama-3.2-3B-Instruct-Q4_K_M.gguf'")
+    print("   3. Click 'Download' button")
+    print(f"   4. Save the file to: {model_path}")
+    print("   5. Run this program again")
     return False
 
 def start_server(ai_engine_path):
