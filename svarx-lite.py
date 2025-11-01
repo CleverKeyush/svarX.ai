@@ -25,6 +25,10 @@ def print_header():
     print("📧 Smart AI suggestions for Gmail, LinkedIn & more!")
     print("🎯 Downloads everything automatically on first run")
     print()
+    print("⚠️  If Windows Defender blocked this, it's a FALSE POSITIVE")
+    print("💡 See Windows-Defender-Exclusion.txt for fix instructions")
+    print("✅ This is safe, open-source software from GitHub")
+    print()
 
 def check_python():
     """Check if Python is installed"""
@@ -83,6 +87,9 @@ def download_ai_engine():
         "requirements.txt"
     ]
     
+    print(f"   Downloading from: {base_url}")
+    print("   This may take a moment...")
+    
     try:
         os.makedirs(ai_engine_path, exist_ok=True)
         
@@ -91,8 +98,20 @@ def download_ai_engine():
             file_url = f"{base_url}/{file_name}"
             file_path = os.path.join(ai_engine_path, file_name)
             
-            urllib.request.urlretrieve(file_url, file_path)
-            print(f"   ✅ {file_name} downloaded")
+            try:
+                urllib.request.urlretrieve(file_url, file_path)
+                
+                # Verify file was downloaded and has content
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    print(f"   ✅ {file_name} downloaded ({os.path.getsize(file_path)} bytes)")
+                else:
+                    print(f"   ❌ {file_name} download failed - file empty or missing")
+                    raise Exception(f"Failed to download {file_name}")
+                    
+            except Exception as e:
+                print(f"   ❌ Error downloading {file_name}: {e}")
+                print(f"   URL: {file_url}")
+                raise
         
         print("✅ AI engine downloaded successfully!")
         return ai_engine_path
@@ -234,19 +253,43 @@ def create_windows_defender_info():
     try:
         with open('Windows-Defender-Exclusion.txt', 'w') as f:
             f.write("""
-# Windows Defender Exclusion Instructions
+# ⚠️ WINDOWS DEFENDER FALSE POSITIVE - SAFE TO IGNORE ⚠️
 
-If Windows Defender flags this as a threat, it's a FALSE POSITIVE.
+If Windows Defender blocked this file, it's a FALSE POSITIVE.
+This is a legitimate AI assistant, NOT malware.
 
-Quick Fix:
-1. Open Windows Security
-2. Go to "Virus & threat protection" 
-3. Click "Manage settings" under protection settings
-4. Add exclusion for this EXE file
+## Why this happens:
+- PyInstaller EXEs often trigger antivirus (common issue)
+- The app downloads files from internet (normal behavior)
+- Creates folders and runs Python (normal AI server setup)
 
-This is a legitimate AI assistant, not malware.
-Source code: https://github.com/CleverKeyush/svarX.ai
+## Quick Fix - Add Windows Defender Exclusion:
+1. Open "Windows Security" (search in Start menu)
+2. Go to "Virus & threat protection"
+3. Click "Manage settings" under "Virus & threat protection settings"
+4. Scroll to "Exclusions" → "Add or remove exclusions"
+5. Click "Add an exclusion" → "File"
+6. Select this EXE file
+7. Click "Open" to add exclusion
+
+## Alternative - Exclude entire folder:
+Add exclusion for the entire svarX.ai folder instead
+
+## 100% Safe because:
+✅ Open source code: https://github.com/CleverKeyush/svarX.ai
+✅ No malicious code - you can verify yourself
+✅ Only downloads legitimate AI models from Hugging Face
+✅ Runs locally on your computer (no data sent anywhere)
+
+## Still concerned?
+Build from source code instead:
+1. Install Python 3.9+
+2. Download source from GitHub
+3. Run: python svarx-lite.py
+
+This is a legitimate productivity tool, not malware.
 """.strip())
+        print("📝 Created Windows-Defender-Exclusion.txt with detailed instructions")
     except:
         pass
 
