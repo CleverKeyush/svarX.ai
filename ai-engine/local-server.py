@@ -620,12 +620,12 @@ def clear_pers():
 def learning_stats():
     """Get learning statistics and storage info"""
     try:
-        from personalization import analyze_user_patterns, get_training_pairs, list_samples, get_db_size_mb, get_email_context_insights
+        from personalization import analyze_user_patterns, get_training_pairs, list_samples, get_storage_status, get_email_context_insights
         
         patterns = analyze_user_patterns()
         training_count = len(get_training_pairs(1000))
         sample_count = len(list_samples(1000))
-        db_size = get_db_size_mb()
+        storage_status = get_storage_status()
         email_insights = get_email_context_insights()
         
         # Count email patterns analyzed
@@ -640,9 +640,13 @@ def learning_stats():
             "learning_active": training_count > 0 or email_pattern_count > 0,
             "personalization_level": min(100, (training_count + sample_count + email_pattern_count)),
             "storage": {
-                "db_size_mb": round(db_size, 2),
-                "max_size_mb": 10,
-                "usage_percent": round((db_size / 10) * 100, 1)
+                "db_size_mb": storage_status["size_mb"],
+                "max_size_mb": storage_status["max_size_mb"],
+                "usage_percent": storage_status["usage_percent"],
+                "status": storage_status["status"],
+                "samples": storage_status["samples"],
+                "training_pairs": storage_status["training_pairs"],
+                "interactions": storage_status["interactions"]
             }
         }
         
@@ -650,23 +654,60 @@ def learning_stats():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+@app.route("/storage_status", methods=["GET"])
+def storage_status_endpoint():
+    """Detailed storage status endpoint"""
+    try:
+        from personalization import get_storage_status
+        status = get_storage_status()
+        
+        # Add recommendations based on status
+        recommendations = []
+        if status["usage_percent"] > 95:
+            recommendations.append("Critical: Storage almost full. Automatic cleanup will run soon.")
+        elif status["usage_percent"] > 80:
+            recommendations.append("Warning: Storage usage high. Consider manual cleanup.")
+        elif status["usage_percent"] > 60:
+            recommendations.append("Good: Storage usage normal. System learning actively.")
+        else:
+            recommendations.append("Excellent: Plenty of storage available for learning.")
+        
+        status["recommendations"] = recommendations
+        return jsonify({"ok": True, "storage": status})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route("/cleanup_storage", methods=["POST"])
 def cleanup_storage():
-    """Manual storage cleanup"""
+    """Manual storage cleanup with enhanced intelligence"""
     try:
-        from personalization import smart_cleanup, compress_old_data, get_db_size_mb
+        from personalization import smart_cleanup, compress_old_data, get_storage_status
         
-        size_before = get_db_size_mb()
-        smart_cleanup()
+        status_before = get_storage_status()
+        final_size = smart_cleanup()
         compressed_patterns = compress_old_data()
-        size_after = get_db_size_mb()
+        status_after = get_storage_status()
         
         return jsonify({
             "ok": True,
-            "size_before_mb": round(size_before, 2),
-            "size_after_mb": round(size_after, 2),
-            "space_saved_mb": round(size_before - size_after, 2),
-            "compressed_patterns": compressed_patterns
+            "cleanup_performed": True,
+            "before": {
+                "size_mb": status_before["size_mb"],
+                "usage_percent": status_before["usage_percent"],
+                "samples": status_before["samples"],
+                "training_pairs": status_before["training_pairs"],
+                "interactions": status_before["interactions"]
+            },
+            "after": {
+                "size_mb": status_after["size_mb"],
+                "usage_percent": status_after["usage_percent"],
+                "samples": status_after["samples"],
+                "training_pairs": status_after["training_pairs"],
+                "interactions": status_after["interactions"]
+            },
+            "space_saved_mb": round(status_before["size_mb"] - status_after["size_mb"], 2),
+            "compressed_patterns": compressed_patterns,
+            "message": f"Storage optimized from {status_before['usage_percent']:.1f}% to {status_after['usage_percent']:.1f}%"
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500

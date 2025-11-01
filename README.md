@@ -18,8 +18,10 @@ Look, I'm not going to oversell this. It's pretty straightforward - you start ty
 
 The suggestions get better over time because the thing actually pays attention to what you pick and how you write.
 
-### 🧠 **It Learns Your Style**
+### 🧠 **It Learns Your Style (Now with Smart Storage)**
 This was the part I spent the most time on. Instead of giving you generic corporate-speak, it tries to match how you actually communicate. If you're more casual, it picks up on that. If you're formal, it goes that direction.
+
+**New in v1.5.0:** The learning system now has intelligent 5GB storage management. When storage fills up, it automatically keeps your best learning data and removes duplicates and old negative feedback. You never lose your personalization, and it never runs out of space.
 
 It stores all this learning stuff on your computer, not in the cloud. I know everyone says that, but you can literally see the database file sitting there in the folder.
 
@@ -28,8 +30,10 @@ Your emails don't go anywhere. The whole thing runs locally on your machine. I b
 
 You can delete all the learning data whenever you want, or just uninstall the whole thing.
 
-### ⚡ **Won't Slow You Down**
+### ⚡ **Won't Slow You Down (Now Runs in Background)**
 I tried to make it as lightweight as possible. When you're not using it, it barely uses any resources. When you need it, it loads up the language model, does its thing, then goes back to sleep.
+
+**New in v1.5.0:** The server now runs completely in the background. No more console windows cluttering your screen, and the AI stays running even if you close the launcher. Perfect for all-day productivity.
 
 ## Getting Started
 
@@ -42,11 +46,15 @@ I tried to make it as lightweight as possible. When you're not using it, it bare
 
 ### Setting Up the Server
 
-When you run `svarX.ai.exe`, you'll see a simple menu. Just choose "Start AI Server Now" and it'll handle the rest. 
+When you run `svarX.ai.exe`, you'll see a simple menu with these options:
+
+- **Start AI Server** - Launches the AI in background mode (recommended)
+- **Toggle Auto-start with Windows** - Set it to start automatically when your computer boots
+- **Stop Background Server** - Stop the AI if it's already running
+
+Choose "Start AI Server" and it'll run silently in the background. You can close the launcher window and the AI keeps running.
 
 The first time might take a few minutes because it needs to download the language model (it's about 2GB). After that, it starts up pretty quickly.
-
-If you want it to start automatically when your computer boots up, there's an option for that too.
 
 ### Installing the Chrome Extension
 
@@ -108,11 +116,40 @@ The core is a Llama-3.2-3B language model that runs locally on your machine. It'
 
 When you're not using it, the whole thing uses maybe 44MB of RAM. When you ask for suggestions, it loads up the model (uses about 3.3GB) and generates responses in 2-5 seconds, then goes back to sleep after a minute of inactivity.
 
-The learning system stores your writing patterns in a local SQLite database. I set the limit at 5GB, but in practice it grows very slowly - maybe 1MB per thousand interactions.
+The learning system stores your writing patterns in a local SQLite database with intelligent 5GB storage management. When it approaches the limit, it automatically:
+
+- Removes duplicate samples and old negative feedback
+- Keeps your most recent and highest-quality learning data  
+- Preserves your personalization patterns and writing style
+- Compresses old data to free up space
+
+In practice, it grows very slowly - maybe 1MB per thousand interactions - and you never have to worry about running out of space.
 
 ### Performance
 
 I spent a lot of time optimizing this thing because I hate software that slows down my computer. When idle, it uses basically no CPU. When learning in the background, it caps itself at 5% CPU usage. Only when you're actively getting suggestions does it use significant resources.
+
+### Storage Management
+
+The new intelligent storage system ensures you never run out of learning space:
+
+**Automatic Cleanup Triggers:**
+- Removes duplicate samples and responses
+- Deletes old negative feedback (keeps positive longer)
+- Prioritizes recent and high-quality learning data
+- Compresses database to reclaim space
+
+**Smart Data Retention:**
+- Keeps 80% most recent data + 20% highest quality older data
+- Preserves high-rated responses and user preferences
+- Maintains your writing style patterns indefinitely
+- Emergency deep cleanup if critically full
+
+**Monitoring & Control:**
+- Real-time storage status via web interface
+- Manual cleanup option when needed
+- Detailed statistics on what's stored
+- Automatic recommendations based on usage
 
 ## 🔧 Development
 
@@ -234,7 +271,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] **Bring Your Own AI** - Want to use a different model? Sure!
 
 ### 🚀 **How We Got Here**
-- **v1.4.0** - The "always learning" update (current!)
+- **v1.5.0** - The "smart storage & background mode" update (current!) 🎉
+  - ✅ Intelligent 5GB storage management with automatic cleanup
+  - ✅ True background mode - no more console windows
+  - ✅ Enhanced learning system that never loses your style
+  - ✅ Real-time storage monitoring and optimization
+- **v1.4.0** - The "always learning" update
 - **v1.3.0** - The "be nice to your computer" update
 - **v1.2.0** - The "it remembers you now" update
 - **v1.1.0** - The "Chrome extension magic" update

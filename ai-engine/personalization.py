@@ -82,19 +82,21 @@ def get_db_size_mb() -> float:
         return 0.0
 
 def smart_cleanup():
-    """Intelligent cleanup to maintain storage limits"""
+    """Intelligent cleanup to maintain storage limits - Enhanced Version"""
     with lock:
         conn = _connect()
         cur = conn.cursor()
         
-        # 1. Remove duplicate samples (keep most recent)
+        print("🧹 Starting intelligent storage cleanup...")
+        
+        # 1. Remove exact duplicates first
         cur.execute("""
             DELETE FROM samples WHERE id NOT IN (
                 SELECT MIN(id) FROM samples GROUP BY text
             )
         """)
+        duplicates_removed = cur.rowcount
         
-        # 2. Remove duplicate training pairs
         cur.execute("""
             DELETE FROM training_pairs WHERE id NOT IN (
                 SELECT MIN(id) FROM training_pairs 
@@ -102,51 +104,110 @@ def smart_cleanup():
             )
         """)
         
-        # 3. Keep only high-value interactions (selected + thumbs up)
+        # 2. Remove old negative feedback (keep positive feedback longer)
+        old_threshold = int(time.time()) - 30*24*3600  # 30 days
         cur.execute("""
             DELETE FROM interaction_feedback 
             WHERE feedback = 'negative' AND created_at < ?
-        """, (int(time.time()) - 7*24*3600,))  # Remove negative feedback older than 7 days
+        """, (old_threshold,))
         
-        # 4. Enforce hard limits with smart selection
-        # Keep most recent and highest weighted samples
+        # 3. Compress old data by keeping only the best examples
+        # Keep samples with diverse vocabulary (avoid repetitive content)
         cur.execute("SELECT COUNT(*) FROM samples")
         sample_count = cur.fetchone()[0]
-        if sample_count > MAX_SAMPLES:
-            cur.execute("""
-                DELETE FROM samples WHERE id NOT IN (
-                    SELECT id FROM samples ORDER BY created_at DESC LIMIT ?
-                )
-            """, (MAX_SAMPLES,))
         
-        # Keep most diverse training pairs
+        if sample_count > MAX_SAMPLES:
+            # Keep 80% most recent + 20% highest quality older samples
+            recent_limit = int(MAX_SAMPLES * 0.8)
+            quality_limit = int(MAX_SAMPLES * 0.2)
+            
+            # Keep most recent samples
+            cur.execute("""
+                CREATE TEMP TABLE keep_samples AS
+                SELECT id FROM samples ORDER BY created_at DESC LIMIT ?
+            """, (recent_limit,))
+            
+            # Add quality older samples (longer, more diverse text)
+            cur.execute("""
+                INSERT INTO keep_samples 
+                SELECT id FROM samples 
+                WHERE id NOT IN (SELECT id FROM keep_samples)
+                AND LENGTH(text) > 50
+                ORDER BY LENGTH(text) DESC, created_at DESC 
+                LIMIT ?
+            """, (quality_limit,))
+            
+            # Remove samples not in keep list
+            cur.execute("DELETE FROM samples WHERE id NOT IN (SELECT id FROM keep_samples)")
+            cur.execute("DROP TABLE keep_samples")
+        
+        # 4. Smart training pair management
         cur.execute("SELECT COUNT(*) FROM training_pairs")
         pair_count = cur.fetchone()[0]
+        
         if pair_count > MAX_TRAINING_PAIRS:
+            # Prioritize: Recent + High ratings + Diverse tones
             cur.execute("""
                 DELETE FROM training_pairs WHERE id NOT IN (
-                    SELECT id FROM training_pairs ORDER BY created_at DESC LIMIT ?
+                    SELECT id FROM (
+                        -- Recent pairs (70%)
+                        SELECT id FROM training_pairs 
+                        ORDER BY created_at DESC 
+                        LIMIT ?
+                        
+                        UNION
+                        
+                        -- High-rated diverse pairs (30%)
+                        SELECT id FROM training_pairs 
+                        WHERE user_rating >= 4
+                        ORDER BY user_rating DESC, created_at DESC
+                        LIMIT ?
+                    )
                 )
-            """, (MAX_TRAINING_PAIRS,))
+            """, (int(MAX_TRAINING_PAIRS * 0.7), int(MAX_TRAINING_PAIRS * 0.3)))
         
-        # Keep only valuable interactions
+        # 5. Keep only valuable interactions (weighted by importance)
         cur.execute("SELECT COUNT(*) FROM interaction_feedback")
         interaction_count = cur.fetchone()[0]
+        
         if interaction_count > MAX_INTERACTIONS:
             cur.execute("""
                 DELETE FROM interaction_feedback WHERE id NOT IN (
                     SELECT id FROM interaction_feedback 
-                    WHERE weight > 0 
+                    WHERE weight > 0.5 OR feedback = 'selected'
                     ORDER BY weight DESC, created_at DESC 
                     LIMIT ?
                 )
             """, (MAX_INTERACTIONS,))
         
-        # 5. Vacuum database to reclaim space
+        # 6. Clean up email patterns (keep only recent diverse patterns)
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='email_patterns'")
+        if cur.fetchone():
+            cur.execute("SELECT COUNT(*) FROM email_patterns")
+            pattern_count = cur.fetchone()[0]
+            
+            if pattern_count > MAX_EMAIL_PATTERNS:
+                cur.execute("""
+                    DELETE FROM email_patterns WHERE id NOT IN (
+                        SELECT id FROM email_patterns 
+                        ORDER BY created_at DESC 
+                        LIMIT ?
+                    )
+                """, (MAX_EMAIL_PATTERNS,))
+        
+        # 7. Vacuum database to reclaim space
         cur.execute("VACUUM")
         
         conn.commit()
+        
+        # Check final size
+        final_size = get_db_size_mb()
+        print(f"✅ Cleanup complete! Database size: {final_size:.1f}MB")
+        print(f"   Removed {duplicates_removed} duplicate samples")
+        
         conn.close()
+        
+        return final_size
 
 def compress_old_data():
     """Compress older data into summary patterns"""
@@ -174,10 +235,83 @@ def compress_old_data():
         
         return len(old_patterns)
 
+def check_storage_and_cleanup():
+    """Check storage usage and perform cleanup if needed"""
+    current_size = get_db_size_mb()
+    
+    if current_size > MAX_DB_SIZE_MB:
+        print(f"⚠️  Storage limit reached: {current_size:.1f}MB / {MAX_DB_SIZE_MB}MB")
+        print("🔄 Starting automatic cleanup to free space...")
+        
+        final_size = smart_cleanup()
+        
+        if final_size > MAX_DB_SIZE_MB * 0.9:  # Still over 90% capacity
+            print("🗂️  Performing deep cleanup...")
+            deep_cleanup()
+        
+        return True
+    
+    return False
+
+def deep_cleanup():
+    """Aggressive cleanup when storage is critically full"""
+    with lock:
+        conn = _connect()
+        cur = conn.cursor()
+        
+        print("🔥 Performing deep storage cleanup...")
+        
+        # Keep only 50% of current limits for emergency space
+        emergency_samples = MAX_SAMPLES // 2
+        emergency_pairs = MAX_TRAINING_PAIRS // 2
+        emergency_interactions = MAX_INTERACTIONS // 2
+        
+        # Keep only the most valuable data
+        cur.execute("""
+            DELETE FROM samples WHERE id NOT IN (
+                SELECT id FROM samples 
+                WHERE LENGTH(text) > 30
+                ORDER BY created_at DESC 
+                LIMIT ?
+            )
+        """, (emergency_samples,))
+        
+        cur.execute("""
+            DELETE FROM training_pairs WHERE id NOT IN (
+                SELECT id FROM training_pairs 
+                WHERE user_rating > 0 OR created_at > ?
+                ORDER BY user_rating DESC, created_at DESC 
+                LIMIT ?
+            )
+        """, (int(time.time()) - 7*24*3600, emergency_pairs))  # Last 7 days or rated
+        
+        cur.execute("""
+            DELETE FROM interaction_feedback WHERE id NOT IN (
+                SELECT id FROM interaction_feedback 
+                WHERE weight > 0.7 OR feedback = 'selected'
+                ORDER BY weight DESC 
+                LIMIT ?
+            )
+        """, (emergency_interactions,))
+        
+        # Remove old email patterns completely
+        cur.execute("DROP TABLE IF EXISTS email_patterns")
+        
+        cur.execute("VACUUM")
+        conn.commit()
+        
+        final_size = get_db_size_mb()
+        print(f"🎯 Deep cleanup complete! Size reduced to {final_size:.1f}MB")
+        
+        conn.close()
+
 def add_sample(text: str):
     text = sanitize_text(text)
     if not text or len(text) < 10:  # Skip very short texts
         return False
+    
+    # Check storage before adding
+    check_storage_and_cleanup()
     
     text_hash = get_text_hash(text)
     ts = int(time.time())
@@ -194,10 +328,6 @@ def add_sample(text: str):
         
         # Add new sample
         cur.execute("INSERT INTO samples (created_at, text) VALUES (?,?)", (ts, text))
-        
-        # Smart cleanup if needed
-        if get_db_size_mb() > MAX_DB_SIZE_MB:
-            smart_cleanup()
         
         conn.commit()
         conn.close()
@@ -221,6 +351,37 @@ def clear_samples():
         conn.commit()
         conn.close()
 
+def get_storage_status():
+    """Get detailed storage status"""
+    current_size = get_db_size_mb()
+    usage_percent = (current_size / MAX_DB_SIZE_MB) * 100
+    
+    with lock:
+        conn = _connect()
+        cur = conn.cursor()
+        
+        # Count records in each table
+        cur.execute("SELECT COUNT(*) FROM samples")
+        sample_count = cur.fetchone()[0]
+        
+        cur.execute("SELECT COUNT(*) FROM training_pairs")
+        pair_count = cur.fetchone()[0]
+        
+        cur.execute("SELECT COUNT(*) FROM interaction_feedback")
+        feedback_count = cur.fetchone()[0]
+        
+        conn.close()
+    
+    return {
+        "size_mb": current_size,
+        "max_size_mb": MAX_DB_SIZE_MB,
+        "usage_percent": usage_percent,
+        "samples": sample_count,
+        "training_pairs": pair_count,
+        "interactions": feedback_count,
+        "status": "critical" if usage_percent > 95 else "warning" if usage_percent > 80 else "healthy"
+    }
+
 def add_training_pair(original_email: str, chosen_reply: str, context: dict):
     """Add a training pair with smart deduplication"""
     original_email = sanitize_text(original_email)
@@ -232,6 +393,9 @@ def add_training_pair(original_email: str, chosen_reply: str, context: dict):
     # Skip if too short or too similar to existing
     if len(original_email) < 20 or len(chosen_reply) < 10:
         return False
+    
+    # Check storage before adding
+    check_storage_and_cleanup()
     
     ts = int(time.time())
     tone = context.get('tone', 'professional')
@@ -257,10 +421,6 @@ def add_training_pair(original_email: str, chosen_reply: str, context: dict):
             (ts, original_email, chosen_reply, tone, length)
         )
         
-        # Smart cleanup if needed
-        if get_db_size_mb() > MAX_DB_SIZE_MB:
-            smart_cleanup()
-        
         conn.commit()
         conn.close()
     return True
@@ -283,6 +443,9 @@ def add_interaction_feedback(learning_data: dict, weight: float = 1.0):
     if weight < 0 and abs(weight) < 0.3:  # Skip weak negative feedback
         return False
     
+    # Check storage before adding
+    check_storage_and_cleanup()
+    
     with lock:
         conn = _connect()
         cur = conn.cursor()
@@ -300,10 +463,6 @@ def add_interaction_feedback(learning_data: dict, weight: float = 1.0):
              learning_data["suggestion"][:200], learning_data["feedback"], weight,  # Limit suggestion length
              compressed_context)
         )
-        
-        # Smart cleanup if needed
-        if get_db_size_mb() > MAX_DB_SIZE_MB:
-            smart_cleanup()
         
         conn.commit()
         conn.close()

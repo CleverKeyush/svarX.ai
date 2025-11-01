@@ -10,6 +10,10 @@ import subprocess
 import time
 import urllib.request
 import json
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 def print_header():
     """Print welcome header"""
@@ -129,33 +133,62 @@ def download_model_info():
     print("   First startup may take 5-10 minutes depending on internet speed")
     print()
 
-def start_server(ai_engine_path):
+def start_server(ai_engine_path, background_mode=False):
     """Start the AI server"""
     server_script = os.path.join(ai_engine_path, 'local-server.py')
     
-    print("🚀 Starting AI Server...")
-    print("🌐 Server URL: http://127.0.0.1:8081")
-    print("💡 Install Chrome extension to use AI suggestions")
-    print("⚡ Press Ctrl+C to stop the server")
-    print()
-    print("🔄 Server starting...")
+    if not background_mode:
+        print("🚀 Starting AI Server...")
+        print("🌐 Server URL: http://127.0.0.1:8081")
+        print("💡 Install Chrome extension to use AI suggestions")
+        print("⚡ Press Ctrl+C to stop the server")
+        print()
+        print("🔄 Server starting...")
     
     try:
         # Start server process with proper encoding
         env = os.environ.copy()
         env['PYTHONIOENCODING'] = 'utf-8'
         
-        process = subprocess.Popen(
-            ['python', server_script],
-            cwd=ai_engine_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            bufsize=1,
-            env=env,
-            encoding='utf-8',
-            errors='replace'
-        )
+        if background_mode:
+            # Run in background without console window
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            
+            process = subprocess.Popen(
+                ['python', server_script],
+                cwd=ai_engine_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                env=env,
+                encoding='utf-8',
+                errors='replace',
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            # Create status file for background mode
+            create_status_file(process.pid)
+            print("✅ AI Server started in background!")
+            print("🌐 Server URL: http://127.0.0.1:8081")
+            print("💡 Server will keep running even if you close this window")
+            print("🔍 Check system tray or task manager to stop the server")
+            input("\nPress Enter to close this window (server keeps running)...")
+            return
+        else:
+            process = subprocess.Popen(
+                ['python', server_script],
+                cwd=ai_engine_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1,
+                env=env,
+                encoding='utf-8',
+                errors='replace'
+            )
         
         # Monitor server output
         server_ready = False
@@ -265,6 +298,69 @@ def remove_from_startup():
         print(f"Error removing from startup: {e}")
         return False
 
+def create_status_file(pid):
+    """Create status file to track background server"""
+    status_dir = os.path.join(os.path.expanduser("~"), ".svarx-ai")
+    os.makedirs(status_dir, exist_ok=True)
+    
+    status_file = os.path.join(status_dir, "server.status")
+    with open(status_file, 'w') as f:
+        json.dump({
+            "running": True,
+            "pid": pid,
+            "started_at": time.time(),
+            "server_url": "http://127.0.0.1:8081"
+        }, f)
+
+def is_server_running():
+    """Check if server is already running in background"""
+    status_file = os.path.join(os.path.expanduser("~"), ".svarx-ai", "server.status")
+    
+    if not os.path.exists(status_file):
+        return False
+    
+    try:
+        with open(status_file, 'r') as f:
+            status = json.load(f)
+        
+        # Check if process is still running
+        import psutil
+        if psutil.pid_exists(status.get("pid", 0)):
+            return True
+        else:
+            # Clean up stale status file
+            os.remove(status_file)
+            return False
+    except:
+        return False
+
+def stop_background_server():
+    """Stop background server"""
+    status_file = os.path.join(os.path.expanduser("~"), ".svarx-ai", "server.status")
+    
+    if not os.path.exists(status_file):
+        print("❌ No background server found")
+        return False
+    
+    try:
+        with open(status_file, 'r') as f:
+            status = json.load(f)
+        
+        import psutil
+        pid = status.get("pid")
+        if pid and psutil.pid_exists(pid):
+            process = psutil.Process(pid)
+            process.terminate()
+            process.wait(timeout=5)
+            print("✅ Background server stopped")
+        
+        os.remove(status_file)
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error stopping server: {e}")
+        return False
+
 def is_in_startup():
     """Check if application is in Windows startup"""
     try:
@@ -290,17 +386,23 @@ def show_startup_menu():
     
     while True:
         print("\n" + "="*60)
-        print("⚙️  svarX.ai - Startup Configuration")
+        print("⚙️  svarX.ai - Server Control Panel")
         print("="*60)
         
-        # Check current startup status
+        # Check current status
         in_startup = is_in_startup()
+        server_running = is_server_running()
+        
         print(f"Windows Startup: {'✅ Enabled' if in_startup else '❌ Disabled'}")
+        print(f"Background Server: {'✅ Running' if server_running else '❌ Stopped'}")
         print()
         
         print("Options:")
         print("  1. Toggle Auto-start with Windows")
-        print("  2. Start AI Server Now")
+        if server_running:
+            print("  2. Stop Background Server")
+        else:
+            print("  2. Start AI Server")
         print("  0. Exit")
         print()
         
@@ -309,7 +411,7 @@ def show_startup_menu():
             
             if choice == '0':
                 print("👋 Goodbye!")
-                return False
+                return None
             
             elif choice == '1':
                 if in_startup:
@@ -329,14 +431,17 @@ def show_startup_menu():
                         print("❌ Failed to add to startup")
             
             elif choice == '2':
-                return True  # Start server
+                if server_running:
+                    stop_background_server()
+                else:
+                    return "background"  # Always start in background mode
             
             else:
-                print("❌ Invalid choice. Please enter 0, 1, or 2.")
+                print("❌ Invalid choice. Please enter 0-2.")
                 
         except KeyboardInterrupt:
             print("\n\n👋 Goodbye!")
-            return False
+            return None
         except Exception as e:
             print(f"❌ Error: {e}")
 
@@ -346,14 +451,14 @@ def main():
     startup_mode = '--startup' in sys.argv
     
     if startup_mode:
-        print("🚀 svarX.ai started with Windows - launching AI server...")
-        # Skip menu in startup mode, go straight to server
+        print("🚀 svarX.ai started with Windows - launching AI server in background...")
+        server_mode = "background"
     else:
         print_header()
         
         # Show startup menu first
-        should_start_server = show_startup_menu()
-        if not should_start_server:
+        server_mode = show_startup_menu()
+        if not server_mode:
             return
     
     # Step 1: Check Python
@@ -384,9 +489,14 @@ def main():
         download_model_info()
     
     # Step 5: Start server
-    print("🎯 Everything ready! Starting AI server...")
+    background_mode = (server_mode == "background")
+    if background_mode:
+        print("🎯 Everything ready! Starting AI server in background...")
+    else:
+        print("🎯 Everything ready! Starting AI server...")
+    
     time.sleep(1)
-    start_server(ai_engine_path)
+    start_server(ai_engine_path, background_mode)
 
 if __name__ == "__main__":
     try:
