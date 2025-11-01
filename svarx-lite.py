@@ -67,6 +67,32 @@ def get_app_dir():
     else:
         return os.path.dirname(os.path.abspath(__file__))
 
+def download_file_with_requests(url, file_path):
+    """Download a single file using requests"""
+    try:
+        download_script = f'''
+import requests
+
+url = "{url}"
+file_path = "{file_path}"
+
+response = requests.get(url)
+response.raise_for_status()
+
+with open(file_path, 'w', encoding='utf-8') as f:
+    f.write(response.text)
+
+print(f"Downloaded {{len(response.text)}} bytes")
+'''
+        
+        result = subprocess.run(['python', '-c', download_script], 
+                              capture_output=True, text=True, timeout=30)
+        
+        return result.returncode == 0
+        
+    except Exception as e:
+        return False
+
 def download_ai_engine():
     """Download AI engine from GitHub"""
     app_dir = get_app_dir()
@@ -93,15 +119,25 @@ def download_ai_engine():
     try:
         os.makedirs(ai_engine_path, exist_ok=True)
         
+        # First install requests
+        print("   Installing requests for downloads...")
+        subprocess.run(['pip', 'install', 'requests'], capture_output=True, timeout=60)
+        
         for file_name in files_to_download:
             print(f"   Downloading {file_name}...")
             file_url = f"{base_url}/{file_name}"
             file_path = os.path.join(ai_engine_path, file_name)
             
+            # Try requests method first
+            if download_file_with_requests(file_url, file_path):
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    print(f"   ✅ {file_name} downloaded ({os.path.getsize(file_path)} bytes)")
+                    continue
+            
+            # Fallback to urllib
             try:
                 urllib.request.urlretrieve(file_url, file_path)
                 
-                # Verify file was downloaded and has content
                 if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
                     print(f"   ✅ {file_name} downloaded ({os.path.getsize(file_path)} bytes)")
                 else:
@@ -119,49 +155,127 @@ def download_ai_engine():
     except Exception as e:
         print(f"❌ Failed to download AI engine: {e}")
         print("💡 Please check your internet connection")
+        print("💡 Alternative: Download source code from GitHub manually")
         return None
 
 def install_dependencies():
     """Install required Python packages"""
     print("📦 Installing AI dependencies...")
     
+    # Essential packages (must work)
     essential_packages = [
         'flask>=2.2.0',
         'flask-cors>=4.0.0', 
         'psutil>=5.9.0',
-        'requests>=2.28.0',
+        'requests>=2.28.0'
+    ]
+    
+    # Optional packages (can fail)
+    optional_packages = [
         'llama-cpp-python>=0.2.0'
     ]
     
-    failed_packages = []
+    failed_essential = []
+    failed_optional = []
     
+    # Install essential packages
     for package in essential_packages:
         print(f"   Installing {package}...")
+        try:
+            result = subprocess.run([
+                'pip', 'install', package, '--upgrade', '--no-cache-dir'
+            ], capture_output=True, text=True, timeout=120)
+            
+            if result.returncode != 0:
+                print(f"   ❌ Failed to install {package}")
+                failed_essential.append(package)
+            else:
+                print(f"   ✅ {package} installed successfully")
+                
+        except Exception as e:
+            print(f"   ❌ Error installing {package}: {e}")
+            failed_essential.append(package)
+    
+    # Install optional packages
+    for package in optional_packages:
+        print(f"   Installing {package} (optional)...")
         try:
             result = subprocess.run([
                 'pip', 'install', package, '--upgrade', '--no-cache-dir'
             ], capture_output=True, text=True, timeout=300)
             
             if result.returncode != 0:
-                print(f"   ❌ Failed to install {package}")
-                failed_packages.append(package)
+                print(f"   ⚠️  {package} failed (will install when server starts)")
+                failed_optional.append(package)
             else:
                 print(f"   ✅ {package} installed successfully")
                 
         except Exception as e:
-            print(f"   ❌ Error installing {package}: {e}")
-            failed_packages.append(package)
+            print(f"   ⚠️  {package} error (will install when server starts): {e}")
+            failed_optional.append(package)
     
-    if failed_packages:
-        print(f"\n⚠️  Some packages failed: {', '.join(failed_packages)}")
+    if failed_essential:
+        print(f"\n❌ Critical packages failed: {', '.join(failed_essential)}")
         print("   Try running as Administrator")
         return False
+    elif failed_optional:
+        print(f"\n💡 Optional packages will be installed when server starts: {', '.join(failed_optional)}")
+        print("✅ Essential dependencies installed successfully!")
+        return True
     else:
         print("✅ All dependencies installed successfully!")
         return True
 
+def download_with_requests(url, file_path):
+    """Download using requests library (more reliable than urllib)"""
+    try:
+        # First install requests if not available
+        subprocess.run(['pip', 'install', 'requests'], capture_output=True, timeout=60)
+        
+        # Use Python to download with requests
+        download_script = f'''
+import requests
+import os
+
+url = "{url}"
+file_path = "{file_path}"
+
+print("   Starting download...")
+response = requests.get(url, stream=True)
+response.raise_for_status()
+
+total_size = int(response.headers.get('content-length', 0))
+downloaded = 0
+
+with open(file_path, 'wb') as f:
+    for chunk in response.iter_content(chunk_size=8192):
+        if chunk:
+            f.write(chunk)
+            downloaded += len(chunk)
+            if total_size > 0:
+                percent = (downloaded * 100) // total_size
+                mb_downloaded = downloaded // (1024 * 1024)
+                mb_total = total_size // (1024 * 1024)
+                print(f"\\r   Progress: {{percent}}% ({{mb_downloaded}}MB / {{mb_total}}MB)", end="", flush=True)
+
+print("\\n   Download completed!")
+'''
+        
+        result = subprocess.run(['python', '-c', download_script], 
+                              capture_output=True, text=True, timeout=600)
+        
+        if result.returncode == 0:
+            return True
+        else:
+            print(f"   Error: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"   Download error: {e}")
+        return False
+
 def download_model(ai_engine_path):
-    """Download AI model"""
+    """Download AI model using multiple methods"""
     model_dir = os.path.join(ai_engine_path, 'models')
     model_path = os.path.join(model_dir, 'Llama-3.2-3B-Instruct-Q4_K_M.gguf')
     
@@ -181,19 +295,19 @@ def download_model(ai_engine_path):
     ]
     
     for i, model_url in enumerate(model_urls):
+        print(f"📥 Trying download source {i+1}/{len(model_urls)}...")
+        
+        # Try using requests library first (more reliable)
+        if download_with_requests(model_url, model_path):
+            if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
+                size_gb = os.path.getsize(model_path) / (1024**3)
+                print(f"✅ Model verified: {size_gb:.1f}GB")
+                return True
+        
+        # Fallback to urllib if requests fails
         try:
-            print(f"📥 Trying download source {i+1}/{len(model_urls)}...")
-            
-            def show_progress(block_num, block_size, total_size):
-                downloaded = block_num * block_size
-                if total_size > 0:
-                    percent = min(100, (downloaded * 100) // total_size)
-                    mb_downloaded = downloaded // (1024 * 1024)
-                    mb_total = total_size // (1024 * 1024)
-                    print(f"\r   Progress: {percent}% ({mb_downloaded}MB / {mb_total}MB)", end='', flush=True)
-            
-            urllib.request.urlretrieve(model_url, model_path, reporthook=show_progress)
-            print("\n✅ Model downloaded successfully!")
+            print("   Trying alternative download method...")
+            urllib.request.urlretrieve(model_url, model_path)
             
             if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
                 size_gb = os.path.getsize(model_path) / (1024**3)
@@ -201,12 +315,16 @@ def download_model(ai_engine_path):
                 return True
                 
         except Exception as e:
-            print(f"\n⚠️  Download failed: {e}")
+            print(f"   ⚠️  Download failed: {e}")
             if i < len(model_urls) - 1:
                 print("   Trying next source...")
                 continue
     
     print("\n❌ All download sources failed!")
+    print("💡 Manual download option:")
+    print("   1. Go to: https://huggingface.co/microsoft/Llama-3.2-3B-Instruct-Q4_K_M-GGUF")
+    print("   2. Download: Llama-3.2-3B-Instruct-Q4_K_M.gguf")
+    print(f"   3. Save to: {model_path}")
     return False
 
 def start_server(ai_engine_path):
