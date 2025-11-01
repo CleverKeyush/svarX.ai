@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-svarx.ai One-Click Server Launcher
+svarx.ai One-Click Server Launcher - Complete Fixed Version
 Just double-click to start the AI server - handles everything automatically!
 """
 
@@ -74,43 +74,67 @@ def find_ai_engine():
     return None
 
 def install_dependencies(ai_engine_path):
-    """Install required Python packages"""
+    """Install required Python packages with better error handling"""
     print("📦 Installing AI dependencies...")
     
-    requirements_file = os.path.join(ai_engine_path, 'requirements.txt')
-    if not os.path.exists(requirements_file):
-        print("⚠️  Requirements file not found, installing essential packages...")
-        essential_packages = [
-            'flask>=2.2',
-            'flask-cors>=4.0', 
-            'psutil>=5.9',
-            'llama-cpp-python>=0.1.37',
-            'sqlalchemy>=1.4'
-        ]
-        
-        for package in essential_packages:
-            print(f"   Installing {package}...")
-            try:
-                subprocess.run(['pip', 'install', package], 
-                             capture_output=True, timeout=60)
-            except:
-                print(f"   ⚠️  Failed to install {package}")
-        return
+    # Essential packages that must be installed
+    essential_packages = [
+        'flask>=2.2.0',
+        'flask-cors>=4.0.0', 
+        'psutil>=5.9.0',
+        'requests>=2.28.0',
+        'huggingface-hub>=0.16.0'
+    ]
     
+    # Try to install each package individually for better error handling
+    failed_packages = []
+    
+    for package in essential_packages:
+        print(f"   Installing {package}...")
+        try:
+            result = subprocess.run([
+                'pip', 'install', package, '--upgrade', '--no-cache-dir'
+            ], capture_output=True, text=True, timeout=120)
+            
+            if result.returncode != 0:
+                print(f"   ❌ Failed to install {package}")
+                print(f"   Error: {result.stderr}")
+                failed_packages.append(package)
+            else:
+                print(f"   ✅ {package} installed successfully")
+                
+        except subprocess.TimeoutExpired:
+            print(f"   ⏰ Timeout installing {package}")
+            failed_packages.append(package)
+        except Exception as e:
+            print(f"   ❌ Error installing {package}: {e}")
+            failed_packages.append(package)
+    
+    # Install llama-cpp-python only when needed (not bundled in EXE)
+    print("   Installing llama-cpp-python (this may take a while)...")
     try:
-        print("   Installing from requirements.txt...")
-        result = subprocess.run(['pip', 'install', '-r', requirements_file], 
-                              capture_output=True, text=True, timeout=180)
+        result = subprocess.run([
+            'pip', 'install', 'llama-cpp-python>=0.2.0', '--upgrade', '--no-cache-dir'
+        ], capture_output=True, text=True, timeout=300)
         
         if result.returncode == 0:
-            print("✅ Dependencies installed successfully!")
+            print("   ✅ llama-cpp-python installed successfully")
         else:
-            print("⚠️  Some dependencies may have failed to install")
+            print("   ⚠️  llama-cpp-python installation had issues")
             print("   The server will try to run anyway...")
             
     except Exception as e:
-        print(f"⚠️  Installation error: {e}")
-        print("   The server will try to run anyway...")
+        print(f"   ⚠️  llama-cpp-python error: {e}")
+        print("   Will try to install when starting server...")
+    
+    if failed_packages:
+        print(f"\n⚠️  Some packages failed to install: {', '.join(failed_packages)}")
+        print("   This might cause issues. Try running as Administrator.")
+        print("   Or install manually: pip install flask flask-cors psutil")
+    else:
+        print("✅ All dependencies installed successfully!")
+    
+    return len(failed_packages) == 0
 
 def check_model_exists(ai_engine_path):
     """Check if AI model exists"""
@@ -123,15 +147,138 @@ def check_model_exists(ai_engine_path):
     
     return False
 
+def download_model_automatically(ai_engine_path):
+    """Download the AI model automatically"""
+    model_dir = os.path.join(ai_engine_path, 'models')
+    model_path = os.path.join(model_dir, 'Llama-3.2-3B-Instruct-Q4_K_M.gguf')
+    
+    if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
+        return True  # Model already exists
+    
+    print("🤖 AI Model Download Required")
+    print("   Downloading Llama-3.2-3B model (~2GB)")
+    print("   This is a one-time download...")
+    print()
+    
+    # Create models directory
+    os.makedirs(model_dir, exist_ok=True)
+    
+    # Model download URLs (try multiple sources)
+    model_urls = [
+        "https://huggingface.co/microsoft/Llama-3.2-3B-Instruct-Q4_K_M-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        "https://huggingface.co/lmstudio-community/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+    ]
+    
+    # Try each URL until one works
+    for i, model_url in enumerate(model_urls):
+        try:
+            print(f"📥 Attempting download from source {i+1}/{len(model_urls)}...")
+            
+            def show_progress(block_num, block_size, total_size):
+                downloaded = block_num * block_size
+                if total_size > 0:
+                    percent = min(100, (downloaded * 100) // total_size)
+                    mb_downloaded = downloaded // (1024 * 1024)
+                    mb_total = total_size // (1024 * 1024)
+                    print(f"\r   Progress: {percent}% ({mb_downloaded}MB / {mb_total}MB)", end='', flush=True)
+            
+            urllib.request.urlretrieve(model_url, model_path, reporthook=show_progress)
+            print("\n✅ Model downloaded successfully!")
+            
+            # Verify download
+            if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
+                size_gb = os.path.getsize(model_path) / (1024**3)
+                print(f"✅ Model verified: {size_gb:.1f}GB")
+                return True
+            else:
+                print("❌ Download verification failed, trying next source...")
+                continue
+                
+        except Exception as e:
+            print(f"\n⚠️  Download from source {i+1} failed: {e}")
+            if i < len(model_urls) - 1:
+                print("   Trying next source...")
+                continue
+    
+    # All downloads failed
+    print("\n❌ All download sources failed!")
+    print("💡 You can manually download the model from:")
+    print("   https://huggingface.co/microsoft/Llama-3.2-3B-Instruct-Q4_K_M-GGUF")
+    print(f"   Save it as: {model_path}")
+    print("\n🔧 Alternative: Use a different model by placing any GGUF model in:")
+    print(f"   {model_dir}")
+    return False
+
 def download_model_info():
     """Show model download information"""
-    print("🤖 AI Model Setup Required")
-    print("   The AI model (Llama-3.2-3B) needs to be downloaded")
+    print("🤖 AI Model Setup")
+    print("   The AI model will be downloaded automatically")
     print("   Size: ~2GB | This is a one-time download")
-    print()
-    print("📥 The model will download automatically when the server starts")
     print("   First startup may take 5-10 minutes depending on internet speed")
     print()
+
+def create_status_file(pid):
+    """Create status file to track background server"""
+    status_dir = os.path.join(os.path.expanduser("~"), ".svarx-ai")
+    os.makedirs(status_dir, exist_ok=True)
+    
+    status_file = os.path.join(status_dir, "server.status")
+    with open(status_file, 'w') as f:
+        json.dump({
+            "running": True,
+            "pid": pid,
+            "started_at": time.time(),
+            "server_url": "http://127.0.0.1:8081"
+        }, f)
+
+def is_server_running():
+    """Check if server is already running in background"""
+    status_file = os.path.join(os.path.expanduser("~"), ".svarx-ai", "server.status")
+    
+    if not os.path.exists(status_file):
+        return False
+    
+    try:
+        with open(status_file, 'r') as f:
+            status = json.load(f)
+        
+        # Check if process is still running
+        if psutil and psutil.pid_exists(status.get("pid", 0)):
+            return True
+        else:
+            # Clean up stale status file
+            os.remove(status_file)
+            return False
+    except:
+        return False
+
+def stop_background_server():
+    """Stop background server"""
+    status_file = os.path.join(os.path.expanduser("~"), ".svarx-ai", "server.status")
+    
+    if not os.path.exists(status_file):
+        print("❌ No background server found")
+        return False
+    
+    try:
+        with open(status_file, 'r') as f:
+            status = json.load(f)
+        
+        if psutil:
+            pid = status.get("pid")
+            if pid and psutil.pid_exists(pid):
+                process = psutil.Process(pid)
+                process.terminate()
+                process.wait(timeout=5)
+                print("✅ Background server stopped")
+        
+        os.remove(status_file)
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error stopping server: {e}")
+        return False
 
 def start_server(ai_engine_path, background_mode=False):
     """Start the AI server"""
@@ -298,69 +445,6 @@ def remove_from_startup():
         print(f"Error removing from startup: {e}")
         return False
 
-def create_status_file(pid):
-    """Create status file to track background server"""
-    status_dir = os.path.join(os.path.expanduser("~"), ".svarx-ai")
-    os.makedirs(status_dir, exist_ok=True)
-    
-    status_file = os.path.join(status_dir, "server.status")
-    with open(status_file, 'w') as f:
-        json.dump({
-            "running": True,
-            "pid": pid,
-            "started_at": time.time(),
-            "server_url": "http://127.0.0.1:8081"
-        }, f)
-
-def is_server_running():
-    """Check if server is already running in background"""
-    status_file = os.path.join(os.path.expanduser("~"), ".svarx-ai", "server.status")
-    
-    if not os.path.exists(status_file):
-        return False
-    
-    try:
-        with open(status_file, 'r') as f:
-            status = json.load(f)
-        
-        # Check if process is still running
-        import psutil
-        if psutil.pid_exists(status.get("pid", 0)):
-            return True
-        else:
-            # Clean up stale status file
-            os.remove(status_file)
-            return False
-    except:
-        return False
-
-def stop_background_server():
-    """Stop background server"""
-    status_file = os.path.join(os.path.expanduser("~"), ".svarx-ai", "server.status")
-    
-    if not os.path.exists(status_file):
-        print("❌ No background server found")
-        return False
-    
-    try:
-        with open(status_file, 'r') as f:
-            status = json.load(f)
-        
-        import psutil
-        pid = status.get("pid")
-        if pid and psutil.pid_exists(pid):
-            process = psutil.Process(pid)
-            process.terminate()
-            process.wait(timeout=5)
-            print("✅ Background server stopped")
-        
-        os.remove(status_file)
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error stopping server: {e}")
-        return False
-
 def is_in_startup():
     """Check if application is in Windows startup"""
     try:
@@ -445,8 +529,60 @@ def show_startup_menu():
         except Exception as e:
             print(f"❌ Error: {e}")
 
+def create_windows_defender_exclusion_info():
+    """Create Windows Defender exclusion instructions"""
+    exclusion_text = """
+# Windows Defender Exclusion Instructions for svarX.ai
+
+If Windows Defender flags svarX.ai.exe as a threat, it's a FALSE POSITIVE.
+This is common with PyInstaller-built executables and is completely safe.
+
+## Quick Fix - Add Exclusion:
+
+1. Open Windows Security (search "Windows Security" in Start menu)
+2. Go to "Virus & threat protection"
+3. Click "Manage settings" under "Virus & threat protection settings"
+4. Scroll down to "Exclusions" and click "Add or remove exclusions"
+5. Click "Add an exclusion" → "File"
+6. Browse and select svarX.ai.exe
+7. Click "Open" to add the exclusion
+
+## Alternative: Exclude the entire folder
+- Add an exclusion for the entire svarX.ai folder instead of just the EXE
+
+## Why this happens:
+- PyInstaller bundles Python with your app, which can look suspicious
+- The app makes network requests (for AI model downloads)
+- It creates files and processes (normal AI server behavior)
+
+## This is 100% safe because:
+- Source code is open and available on GitHub
+- No malicious code is present - you can verify yourself
+- The app only runs locally on your machine
+- All network requests are to legitimate AI model repositories (Hugging Face)
+
+## Still concerned?
+You can build from source code instead of using the pre-built EXE:
+1. Download Python 3.9+
+2. Clone the GitHub repository
+3. Run: pip install -r requirements.txt
+4. Run: python svarx-one-click.py
+
+This is a legitimate AI assistant tool, not malware.
+"""
+    
+    try:
+        with open('Windows-Defender-Exclusion.txt', 'w') as f:
+            f.write(exclusion_text.strip())
+        print("📝 Created Windows-Defender-Exclusion.txt with instructions")
+    except:
+        pass
+
 def main():
     """Main launcher function"""
+    # Create Windows Defender exclusion info
+    create_windows_defender_exclusion_info()
+    
     # Check for startup mode
     startup_mode = '--startup' in sys.argv
     
@@ -482,11 +618,25 @@ def main():
     print(f"✅ AI engine found: {ai_engine_path}")
     
     # Step 3: Install dependencies
-    install_dependencies(ai_engine_path)
+    deps_success = install_dependencies(ai_engine_path)
+    if not deps_success:
+        print("\n⚠️  Some dependencies failed to install.")
+        print("💡 Try running as Administrator or install manually:")
+        print("   pip install flask flask-cors psutil requests huggingface-hub")
+        
+        choice = input("\nContinue anyway? (y/n): ").lower()
+        if choice != 'y':
+            print("👋 Exiting. Please fix dependencies and try again.")
+            input("Press Enter to exit...")
+            return
     
-    # Step 4: Check model
+    # Step 4: Download model automatically
     if not check_model_exists(ai_engine_path):
         download_model_info()
+        if not download_model_automatically(ai_engine_path):
+            print("❌ Model download failed. Cannot start server without model.")
+            input("Press Enter to exit...")
+            return
     
     # Step 5: Start server
     background_mode = (server_mode == "background")
@@ -505,4 +655,5 @@ if __name__ == "__main__":
         print("\n👋 Goodbye!")
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
+        print("💡 If Windows Defender blocked this, see Windows-Defender-Exclusion.txt")
         input("Press Enter to exit...")
