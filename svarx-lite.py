@@ -232,16 +232,20 @@ def download_with_requests(url, file_path):
         # First install requests if not available
         subprocess.run(['pip', 'install', 'requests'], capture_output=True, timeout=60)
         
-        # Fix Windows path escaping by using raw strings and forward slashes
-        file_path_fixed = file_path.replace('\\', '/')
+        # Create a temporary Python script to avoid path escaping issues
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        script_path = os.path.join(temp_dir, 'download_model.py')
         
-        # Use Python to download with requests
-        download_script = f'''
+        # Write the download script to a file
+        with open(script_path, 'w') as f:
+            f.write(f'''
 import requests
 import os
+import sys
 
-url = r"{url}"
-file_path = r"{file_path}"
+url = "{url}"
+file_path = sys.argv[1]
 
 print("   Starting download...")
 try:
@@ -266,10 +270,17 @@ try:
 except Exception as e:
     print(f"   Download error: {{e}}")
     raise
-'''
+''')
         
-        result = subprocess.run(['python', '-c', download_script], 
+        # Run the script with file path as argument
+        result = subprocess.run(['python', script_path, file_path], 
                               capture_output=True, text=True, timeout=600)
+        
+        # Clean up
+        try:
+            os.remove(script_path)
+        except:
+            pass
         
         if result.returncode == 0:
             return True
@@ -282,47 +293,47 @@ except Exception as e:
         return False
 
 def download_with_pip(url, file_path):
-    """Download using pip download as a fallback"""
+    """Download using urllib with SSL fix as a fallback"""
     try:
-        print("   Trying pip download method...")
-        # Use pip to download (it handles HTTPS better)
-        temp_dir = os.path.join(os.path.dirname(file_path), 'temp_download')
-        os.makedirs(temp_dir, exist_ok=True)
+        print("   Trying SSL-fixed download method...")
+        
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        script_path = os.path.join(temp_dir, 'download_ssl.py')
         
         # Create a simple download script
-        download_script = os.path.join(temp_dir, 'download.py')
-        with open(download_script, 'w') as f:
+        with open(script_path, 'w') as f:
             f.write(f'''
 import urllib.request
 import ssl
+import sys
 
 # Create unverified SSL context (for compatibility)
 ssl_context = ssl.create_default_context()
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
-url = r"{url}"
-file_path = r"{file_path}"
+url = "{url}"
+file_path = sys.argv[1]
 
-print("Starting download...")
+print("   Starting SSL download...")
 urllib.request.urlretrieve(url, file_path)
-print("Download completed!")
+print("   Download completed!")
 ''')
         
-        result = subprocess.run(['python', download_script], 
+        result = subprocess.run(['python', script_path, file_path], 
                               capture_output=True, text=True, timeout=600)
         
         # Cleanup
         try:
-            os.remove(download_script)
-            os.rmdir(temp_dir)
+            os.remove(script_path)
         except:
             pass
         
         return result.returncode == 0
         
     except Exception as e:
-        print(f"   Pip download error: {e}")
+        print(f"   SSL download error: {e}")
         return False
 
 def download_model(ai_engine_path):
@@ -475,10 +486,173 @@ This is a legitimate productivity tool, not malware.
     except:
         pass
 
+def load_config():
+    """Load configuration from file"""
+    config_file = os.path.join(os.path.expanduser("~"), ".svarx-ai-config.json")
+    default_config = {"auto_start_with_windows": False}
+    
+    try:
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+                for key, value in default_config.items():
+                    if key not in config:
+                        config[key] = value
+                return config
+    except:
+        pass
+    
+    return default_config
+
+def save_config(config):
+    """Save configuration to file"""
+    config_file = os.path.join(os.path.expanduser("~"), ".svarx-ai-config.json")
+    try:
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+    except Exception as e:
+        print(f"Error saving config: {e}")
+
+def get_exe_path():
+    """Get the path to this executable"""
+    if getattr(sys, 'frozen', False):
+        return sys.executable
+    else:
+        return os.path.abspath(__file__)
+
+def add_to_startup():
+    """Add this application to Windows startup"""
+    try:
+        import winreg
+        exe_path = get_exe_path()
+        
+        # Add to Windows Registry (Run key)
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                           r"Software\Microsoft\Windows\CurrentVersion\Run", 
+                           0, winreg.KEY_SET_VALUE)
+        
+        winreg.SetValueEx(key, "svarX.ai", 0, winreg.REG_SZ, 
+                        f'"{exe_path}" --startup')
+        winreg.CloseKey(key)
+        return True
+        
+    except Exception as e:
+        print(f"Error adding to startup: {e}")
+        return False
+
+def remove_from_startup():
+    """Remove this application from Windows startup"""
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                           r"Software\Microsoft\Windows\CurrentVersion\Run", 
+                           0, winreg.KEY_SET_VALUE)
+        
+        try:
+            winreg.DeleteValue(key, "svarX.ai")
+        except FileNotFoundError:
+            pass  # Already removed
+        
+        winreg.CloseKey(key)
+        return True
+        
+    except Exception as e:
+        print(f"Error removing from startup: {e}")
+        return False
+
+def is_in_startup():
+    """Check if application is in Windows startup"""
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                           r"Software\Microsoft\Windows\CurrentVersion\Run", 
+                           0, winreg.KEY_READ)
+        
+        try:
+            value, _ = winreg.QueryValueEx(key, "svarX.ai")
+            winreg.CloseKey(key)
+            return True
+        except FileNotFoundError:
+            winreg.CloseKey(key)
+            return False
+            
+    except Exception as e:
+        return False
+
+def show_startup_menu():
+    """Show startup configuration menu"""
+    config = load_config()
+    
+    while True:
+        print("\n" + "="*60)
+        print("⚙️  svarX.ai - Server Control Panel")
+        print("="*60)
+        
+        # Check current status
+        in_startup = is_in_startup()
+        
+        print(f"Windows Startup: {'✅ Enabled' if in_startup else '❌ Disabled'}")
+        print()
+        
+        print("Options:")
+        print("  1. Toggle Auto-start with Windows")
+        print("  2. Start AI Server")
+        print("  0. Exit")
+        print()
+        
+        try:
+            choice = input("Enter your choice (0-2): ").strip()
+            
+            if choice == '0':
+                print("👋 Goodbye!")
+                return None
+            
+            elif choice == '1':
+                if in_startup:
+                    if remove_from_startup():
+                        config["auto_start_with_windows"] = False
+                        save_config(config)
+                        print("✅ Removed from Windows startup")
+                    else:
+                        print("❌ Failed to remove from startup")
+                else:
+                    if add_to_startup():
+                        config["auto_start_with_windows"] = True
+                        save_config(config)
+                        print("✅ Added to Windows startup")
+                        print("💡 svarX.ai will now start automatically when Windows boots")
+                    else:
+                        print("❌ Failed to add to startup")
+            
+            elif choice == '2':
+                return "start_server"  # Start server
+            
+            else:
+                print("❌ Invalid choice. Please enter 0-2.")
+                
+        except KeyboardInterrupt:
+            print("\n\n👋 Goodbye!")
+            return None
+        except Exception as e:
+            print(f"❌ Error: {e}")
+
 def main():
     """Main function"""
     create_windows_defender_info()
-    print_header()
+    
+    # Check for startup mode
+    startup_mode = '--startup' in sys.argv
+    
+    if startup_mode:
+        print("🚀 svarX.ai started with Windows - launching AI server...")
+        server_mode = "start_server"
+    else:
+        print_header()
+        
+        # Show startup menu first
+        server_mode = show_startup_menu()
+        if not server_mode:
+            return
     
     # Step 1: Check Python
     if not check_python():
