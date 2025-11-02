@@ -52,10 +52,19 @@ If Windows Defender blocks the file:
 
 ## 📁 How to Get svarX.ai:
 
-### 🎯 Method 1: GitHub Releases (Recommended)
-1. Go to: https://github.com/CleverKeyush/svarX.ai/releases
-2. Download **svarX.ai-complete.exe** from the latest release
-3. This method is less likely to trigger virus warnings
+### 🎯 Method 1: Download ZIP Packages (Recommended)
+ZIP files are much less likely to be flagged as viruses:
+
+| Download | Size | Description |
+|----------|------|-------------|
+| **[svarX.ai-complete.zip](svarX.ai-complete.zip)** | 6.3MB | 🚀 **RECOMMENDED** - Auto-installs everything |
+| **[svarX.ai-lite.zip](svarX.ai-lite.zip)** | 6.5MB | Downloads AI engine from GitHub |
+
+**How to use:**
+1. Download the ZIP file
+2. Extract the EXE file
+3. Run the EXE file
+4. Follow the setup wizard
 
 ### 🔧 Method 2: Build from Source (100% Safe)
 ```bash
