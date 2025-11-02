@@ -174,17 +174,28 @@ python local-server.py
 # 4. Select the "extension" folder
 ```
 
-### 🔨 **Building EXE**
+### 🔨 **Building EXE (Recommended Method)**
+
+Due to GitHub virus detection issues with EXE files, we recommend building locally:
 
 ```bash
 # Install PyInstaller
 pip install pyinstaller
 
-# Build the executable
-pyinstaller --onefile --console --name svarX.ai svarx-one-click.py
+# Build the complete version (recommended)
+pyinstaller --onefile --name "svarX.ai" svarx-simple.py
+
+# Or build the full-featured version
+pyinstaller --onefile --name "svarX.ai" svarx-one-click.py
 
 # Output: dist/svarX.ai.exe
 ```
+
+**Why build locally?**
+- ✅ No virus detection issues
+- ✅ Always latest code
+- ✅ Customizable build options
+- ✅ 100% trusted by your system
 
 ### 📁 **Project Structure**
 

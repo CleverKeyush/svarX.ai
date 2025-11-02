@@ -54,4 +54,6 @@ ai-engine/models/*.safetensors
 
 # User data
 personalization.db
-.svarx-ai-config.json
+.svarx-ai-config.json# EXE 
+Files (avoid virus detection on GitHub)
+*.exe
