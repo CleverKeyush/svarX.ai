@@ -23,9 +23,63 @@ def print_header():
     print("🎯 Downloads everything automatically on first run")
     print()
 
+def download_and_install_python():
+    """Download and install Python automatically"""
+    print("📥 Downloading Python installer...")
+    
+    # Python 3.11 installer URL (reliable and stable)
+    python_url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+    installer_path = os.path.join(os.path.expanduser("~"), "Downloads", "python-installer.exe")
+    
+    try:
+        # Download Python installer using PowerShell
+        if download_with_powershell(python_url, installer_path):
+            print("✅ Python installer downloaded!")
+            
+            print("🔧 Installing Python (this may take a few minutes)...")
+            print("   Installing with 'Add to PATH' enabled...")
+            
+            # Install Python silently with PATH addition
+            install_command = [
+                installer_path,
+                '/quiet',
+                'InstallAllUsers=1',
+                'PrependPath=1',
+                'Include_test=0'
+            ]
+            
+            result = subprocess.run(install_command, timeout=300)
+            
+            if result.returncode == 0:
+                print("✅ Python installed successfully!")
+                
+                # Clean up installer
+                try:
+                    os.remove(installer_path)
+                except:
+                    pass
+                
+                # Refresh PATH by restarting this process
+                print("🔄 Restarting to refresh PATH...")
+                time.sleep(2)
+                subprocess.run([sys.executable] + sys.argv)
+                sys.exit(0)
+            else:
+                print("❌ Python installation failed")
+                return False
+        else:
+            print("❌ Failed to download Python installer")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error installing Python: {e}")
+        return False
+
 def check_python():
-    """Check if Python is installed"""
+    """Check if Python is installed, install if missing"""
     print("🔍 Checking Python installation...")
+    
+    # Try python command
     try:
         result = subprocess.run(['python', '--version'], 
                               capture_output=True, text=True, timeout=5)
@@ -36,10 +90,32 @@ def check_python():
     except:
         pass
     
+    # Try python3 command
+    try:
+        result = subprocess.run(['python3', '--version'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            print(f"✅ Python found: {version}")
+            return True
+    except:
+        pass
+    
     print("❌ Python not found!")
-    print("📥 Please install Python from: https://python.org/downloads/")
-    input("Press Enter after installing Python...")
-    return False
+    print("🤖 svarX.ai can automatically install Python for you")
+    
+    choice = input("Install Python automatically? (y/n): ").lower().strip()
+    
+    if choice == 'y' or choice == 'yes':
+        return download_and_install_python()
+    else:
+        print("💡 Manual installation:")
+        print("   1. Go to: https://python.org/downloads/")
+        print("   2. Download Python 3.11 or newer")
+        print("   3. Run installer and check 'Add to PATH'")
+        print("   4. Run this program again")
+        input("Press Enter after installing Python...")
+        return False
 
 def get_app_dir():
     """Get application directory"""
@@ -115,34 +191,76 @@ def download_ai_engine():
         return None
 
 def install_dependencies():
-    """Install required Python packages"""
+    """Install required Python packages with automatic pip upgrade"""
     print("📦 Installing AI dependencies...")
     
-    packages = [
+    # First upgrade pip to latest version
+    print("   Upgrading pip to latest version...")
+    try:
+        subprocess.run(['python', '-m', 'pip', 'install', '--upgrade', 'pip'], 
+                      capture_output=True, timeout=60)
+        print("   ✅ pip upgraded")
+    except:
+        print("   ⚠️  pip upgrade failed, continuing anyway...")
+    
+    # Essential packages (must work for basic functionality)
+    essential_packages = [
         'flask>=2.2.0',
         'flask-cors>=4.0.0', 
         'psutil>=5.9.0',
-        'requests>=2.28.0',
-        'llama-cpp-python>=0.2.0'
+        'requests>=2.28.0'
     ]
     
-    for package in packages:
+    # Optional packages (AI functionality)
+    optional_packages = [
+        'llama-cpp-python>=0.2.0',
+        'sqlalchemy>=1.4.0',
+        'huggingface-hub>=0.16.0'
+    ]
+    
+    failed_essential = []
+    
+    # Install essential packages
+    for package in essential_packages:
         print(f"   Installing {package}...")
         try:
             result = subprocess.run([
-                'pip', 'install', package, '--upgrade'
+                'python', '-m', 'pip', 'install', package, '--upgrade', '--no-cache-dir'
+            ], capture_output=True, text=True, timeout=180)
+            
+            if result.returncode == 0:
+                print(f"   ✅ {package} installed successfully")
+            else:
+                print(f"   ❌ {package} failed: {result.stderr}")
+                failed_essential.append(package)
+                
+        except Exception as e:
+            print(f"   ❌ {package} error: {e}")
+            failed_essential.append(package)
+    
+    # Install optional packages (don't fail if these don't work)
+    for package in optional_packages:
+        print(f"   Installing {package} (optional)...")
+        try:
+            result = subprocess.run([
+                'python', '-m', 'pip', 'install', package, '--upgrade', '--no-cache-dir'
             ], capture_output=True, text=True, timeout=300)
             
             if result.returncode == 0:
-                print(f"   ✅ {package} installed")
+                print(f"   ✅ {package} installed successfully")
             else:
-                print(f"   ⚠️  {package} failed (will try when server starts)")
+                print(f"   ⚠️  {package} failed (will install when server starts)")
                 
         except Exception as e:
-            print(f"   ⚠️  {package} error: {e}")
+            print(f"   ⚠️  {package} error (will install when server starts)")
     
-    print("✅ Dependencies installation completed!")
-    return True
+    if failed_essential:
+        print(f"\n❌ Critical packages failed: {', '.join(failed_essential)}")
+        print("💡 Try running as Administrator or check internet connection")
+        return False
+    else:
+        print("✅ Essential dependencies installed successfully!")
+        return True
 
 def download_model(ai_engine_path):
     """Download AI model using PowerShell"""
@@ -221,31 +339,59 @@ def start_server(ai_engine_path):
         input("Press Enter to exit...")
 
 def main():
-    """Main function"""
+    """Main function - Complete automatic setup"""
     print_header()
     
-    # Step 1: Check Python
+    print("🎯 svarX.ai will now set up everything automatically:")
+    print("   • Python (if not installed)")
+    print("   • AI Engine files")
+    print("   • Python libraries") 
+    print("   • AI Model (~2GB)")
+    print()
+    
+    # Step 1: Check/Install Python
+    print("=" * 50)
+    print("STEP 1: Python Setup")
+    print("=" * 50)
     if not check_python():
+        print("❌ Python setup failed")
         input("Press Enter to exit...")
         return
     
     # Step 2: Download AI engine
+    print("\n" + "=" * 50)
+    print("STEP 2: AI Engine Download")
+    print("=" * 50)
     ai_engine_path = download_ai_engine()
     if not ai_engine_path:
+        print("❌ AI Engine download failed")
         input("Press Enter to exit...")
         return
     
     # Step 3: Install dependencies
-    install_dependencies()
+    print("\n" + "=" * 50)
+    print("STEP 3: Python Libraries")
+    print("=" * 50)
+    if not install_dependencies():
+        choice = input("\nSome packages failed. Continue anyway? (y/n): ").lower()
+        if choice != 'y':
+            return
     
     # Step 4: Download model
+    print("\n" + "=" * 50)
+    print("STEP 4: AI Model Download")
+    print("=" * 50)
     if not download_model(ai_engine_path):
         print("❌ Cannot start without AI model")
+        print("💡 You can download it manually and run this again")
         input("Press Enter to exit...")
         return
     
     # Step 5: Start server
-    print("🎯 Everything ready! Starting server...")
+    print("\n" + "=" * 50)
+    print("STEP 5: Starting AI Server")
+    print("=" * 50)
+    print("🎉 Setup complete! Starting AI server...")
     start_server(ai_engine_path)
 
 if __name__ == "__main__":
